@@ -1,38 +1,22 @@
-# sv
+# Novelpedia Browser
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A browser for easily finding and sorting novels on Novelpia.
 
-## Creating a project
+## About
 
-If you're seeing this, you've probably already done this step. Congrats!
+The Novelpedia Browser is a tool designed to make finding and sorting novels on Novelpia simple and efficient. Instead of navigating the original site, this site provides a clean interface with powerful search and filter options.
 
-```sh
-# create a new project in the current directory
-npx sv create
+## Key Features:
 
-# create a new project in my-app
-npx sv create my-app
-```
+    Comprehensive Search: Search by title, synopsis, or author name.
 
-## Developing
+    Advanced Filtering: Use a wide range of tags to narrow down your results.
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+    Sorting Options: Sort novels by likes, chapters, or audience ratings.
 
-```sh
-npm run dev
+    Clean UI: A user-friendly interface that makes Browse a pleasure.
 
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
+## Future Plans
 
-## Building
+While the current version is focused exclusively on Novelpia, we have plans to expand our scope to include novels from other popular sites in the future.
 
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
