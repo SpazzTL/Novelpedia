@@ -361,7 +361,7 @@
 						{/if}
 
 						<img
-							src={`/novelpia_covers/${novel.id}.webp`}
+							src={`/novelpia_covers_compressed/${novel.id}.webp`}
 							alt="Cover for {novel.title}"
 							loading="lazy"
 							on:error={handleCoverError}
