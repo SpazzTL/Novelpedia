@@ -16,6 +16,7 @@
 		publication_status: '완결' | '연재중';
 		chapter_count: number;
 		like_count: number;
+		source?: string;
 	}
 
 	//== STATE MANAGEMENT (SVELTE STORES) ==============================
@@ -38,6 +39,7 @@
 	const perPage = writable(20);
 	const currentPage = writable(1);
 	const showFilters = writable(true);
+	
 
 	//== AUTOCOMPLETE DATA STORES ==============================
 	const allUniqueTags = derived(allNovels, ($allNovels) =>
@@ -77,12 +79,13 @@
 			.map(([tag]) => tag);
 	});
 	
+	//== DERIVED STORES (REACTIVE COMPUTATIONS) ========================
 	const filteredNovels = derived(
 		[allNovels, query, authorQuery, mustHaveTag, selectedTags, showAdult, status, minChapters, maxChapters, minLikes, maxLikes, withCoverOnly, sortBy, sortDir],
 		([$allNovels, $query, $authorQuery, $mustHaveTag, $selectedTags, $showAdult, $status, $minChapters, $maxChapters, $minLikes, $maxLikes, $withCoverOnly, $sortBy, $sortDir]) => {
-			const q = $query.toLowerCase();
+			const q = $query.toLowerCase().trim();
 			const filtered = $allNovels.filter(novel => {
-				const matchesQuery = q === '' || novel.title?.toLowerCase().includes(q) || novel.synopsis?.toLowerCase().includes(q);
+				const matchesQuery = q === '' || novel.title?.toLowerCase().includes(q) || novel.id?.toString() === q; // Updated to match ID
 				const matchesAuthor = $authorQuery === '' || novel.author?.includes($authorQuery);
 				const matchesMustHaveTag = !$mustHaveTag || novel.tags?.includes($mustHaveTag);
 				const matchesOptionalTags = $selectedTags.length === 0 || $selectedTags.some(tag => novel.tags?.includes(tag));
@@ -104,7 +107,6 @@
 				}
 				return $sortDir === 'asc' ? -result : result;
 			});
-
 			return filtered;
 		}
 	);
@@ -148,10 +150,17 @@
 
 	function handleCoverError(e: Event) {
 		const target = e.target as HTMLImageElement;
-		if (target.parentElement) {
-			target.parentElement.classList.add('no-cover');
+		// Check if the current source is .jpg
+		if (target.src.endsWith('.jpg')) {
+			// If .jpg fails, try .webp
+			target.src = target.src.replace('.jpg', '.webp');
+		} else {
+			// If .webp also fails, show the placeholder
+			if (target.parentElement) {
+				target.parentElement.classList.add('no-cover');
+			}
+			target.style.display = 'none';
 		}
-		target.style.display = 'none';
 	}
 	
 	function selectSuggestion(store: Writable<string>, value: string) {
@@ -188,7 +197,7 @@
 		<div class="filter-panel" transition:slide={{ duration: 300 }}>
 			<fieldset>
 				<div class="autocomplete-wrapper">
-					<input type="search" placeholder="Search title or synopsis..." bind:value={$query} />
+					<input type="search" placeholder="Search title or ID..." bind:value={$query} />
 					{#if $titleSuggestions.length > 0}
 						<ul class="suggestions-list">
 							{#each $titleSuggestions as suggestion}
@@ -344,6 +353,7 @@
 	{:else}
 		<div class="grid">
 			{#each $pagedNovels as novel (novel.id)}
+			<a href={novel.source === 'Novelpia' ? `https://novelpia.com/novel/${novel.id}` : '#'} target="_blank" rel="noopener noreferrer" class="card-link">
 				<div class="card" transition:fade>
 					<div class="card-cover">
 						{#if novel.is_adult}
@@ -351,7 +361,7 @@
 						{/if}
 
 						<img
-							src={`/novelpia_covers/${novel.id}.jpg`}
+							src={`/novelpia_covers/${novel.id}.webp`}
 							alt="Cover for {novel.title}"
 							loading="lazy"
 							on:error={handleCoverError}
@@ -381,6 +391,7 @@
 						</div>
 					</div>
 				</div>
+				</a>
 			{/each}
 		</div>
 
@@ -793,6 +804,15 @@
 
 	.suggestions-list li:hover {
 		background-color: var(--primary-color);
+	}
+
+	.card-link {
+		text-decoration: none;
+		color: inherit;
+	}
+	.card-link:hover .card {
+		transform: translateY(-5px);
+		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 	}
 
 	/* ADDED: R19 Badge Style */
