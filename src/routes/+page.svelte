@@ -3,6 +3,7 @@
 	// MODIFIED: Imported Writable and Readable for strong typing
 	import { writable, derived, type Writable, type Readable } from 'svelte/store';
 	import { fade, slide } from 'svelte/transition';
+	import { base } from '$app/paths';
 
 	//== TYPESCRIPT INTERFACE ==========================================
 	interface Novel {
@@ -79,6 +80,7 @@
 			.slice(0, 50)
 			.map(([tag]) => tag);
 	});
+
 	//== DERIVED STORES (REACTIVE COMPUTATIONS) ========================
 	const filteredNovels = derived(
 		[allNovels, query, authorQuery, mustHaveTag, selectedTags, showAdult, status, minChapters, maxChapters, minLikes, maxLikes, withCoverOnly, sortBy, sortDir],
@@ -125,10 +127,12 @@
 	filteredNovels.subscribe(() => {
 		currentPage.set(1);
 	});
+
 	//== LIFECYCLE & FUNCTIONS =========================================
 	onMount(async () => {
 		try {
-			const res = await fetch('/novelpia_metadata.jsonl');
+			// MODIFIED: Use the base path from $app/paths to construct the URL
+			const res = await fetch(`${base}/novelpia_metadata.jsonl`);
 			if (!res.ok) throw new Error(`HTTP error ${res.status}`);
 			const text = await res.text();
 			const novelsData = text.split('\n').filter(Boolean).map(line => JSON.parse(line));
@@ -170,7 +174,6 @@
 		store.set(value);
 	}
 </script>
-
 <svelte:head>
 	<title>Novelpedia Browser</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
