@@ -138,6 +138,16 @@
 		margin-right: 6px;
 	}
 
+	/* NEW: Style for selected tags */
+	.tag-checkbox.selected {
+		background: var(--secondary-color); /* A more prominent color */
+		border: 1px solid var(--font-color); /* A border to make it stand out */
+		color: white;
+	}
+	.tag-checkbox.selected:hover {
+		background: #d43c55; /* A slightly darker shade on hover for selected */
+	}
+
 	.results-header {
 		display: flex;
 		justify-content: space-between;
@@ -430,4 +440,20 @@
 		border: 2px solid white;
 		z-index: 5;
 		user-select: none;
+	}
+
+	/* Custom Message Box */
+	.custom-message {
+		position: fixed;
+		bottom: 20px;
+		left: 50%;
+		transform: translateX(-50%);
+		background-color: var(--primary-color);
+		color: white;
+		padding: 15px 25px;
+		border-radius: var(--radius);
+		box-shadow: var(--shadow);
+		z-index: 1000;
+		text-align: center;
+		font-size: 1rem;
 	}

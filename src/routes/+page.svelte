@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	// MODIFIED: Imported Writable and Readable for strong typing
 	import { writable, derived, get, type Writable, type Readable } from 'svelte/store';
 	import { fade, slide } from 'svelte/transition';
 	import { base } from '$app/paths';
@@ -13,7 +12,6 @@
 		synopsis: string;
 		tags: string[];
 		cover_local_path: string | null;
-		// ADDED: Novel cover URL
 		cover_url: string | null;
 		is_adult: boolean;
 		publication_status: '완결' | '연재중';
@@ -42,34 +40,24 @@
 	const perPage = writable(20);
 	const currentPage = writable(1);
 	const showFilters = writable(true);
-	
 
 	let jumpToPage: number | null = null;
+	// Refs for input elements to manage focus/blur for autocomplete
+	let queryInput: HTMLInputElement;
+	let authorQueryInput: HTMLInputElement;
+	let mustHaveTagInput: HTMLInputElement;
+
+	// Timeout for blur event to allow click on suggestion.
+	let blurTimeout: number;
+
 	//== AUTOCOMPLETE DATA STORES ==============================
-	const allUniqueTags = derived(allNovels, ($allNovels) =>
-		[...new Set($allNovels.flatMap((n) => n.tags || []))].sort()
-	);
 	const allUniqueAuthors = derived(allNovels, ($allNovels) =>
 		[...new Set($allNovels.map((n) => n.author))].sort()
 	);
 	const allUniqueTitles = derived(allNovels, ($allNovels) =>
 		[...new Set($allNovels.map((n) => n.title))].sort()
 	);
-
-	//== AUTOCOMPLETE SUGGESTION STORES ========================
-	const createSuggestionStore = (inputStore: Writable<string>, dataStore: Readable<string[]>) => {
-		return derived([inputStore, dataStore], ([$input, $data]) => {
-			if (!$input || $input.length < 2) return [];
-			const lowercasedInput = $input.toLowerCase();
-			return $data.filter((item) => item.toLowerCase().includes(lowercasedInput)).slice(0, 7);
-		});
-	};
-
-	const titleSuggestions = createSuggestionStore(query, allUniqueTitles);
-	const authorSuggestions = createSuggestionStore(authorQuery, allUniqueAuthors);
-	const tagSuggestions = createSuggestionStore(mustHaveTag, allUniqueTags);
-
-	//== DERIVED STORES (REACTIVE COMPUTATIONS) ========================
+	
 	const topTags = derived(allNovels, ($allNovels) => {
 		const tagCounts: Record<string, number> = {};
 		for (const novel of $allNovels) {
@@ -82,6 +70,61 @@
 			.slice(0, 50)
 			.map(([tag]) => tag);
 	});
+	
+	//== AUTOCOMPLETE SUGGESTION STORES ========================
+	const createSuggestionStore = (
+		inputStore: Writable<string>,
+		dataStore: Readable<string[]>,
+		popularityMap: Readable<Record<string, number>> = writable<Record<string, number>>({})
+	) => {
+		return derived([inputStore, dataStore, popularityMap], ([$input, $data, $popularityMap]) => {
+			const trimmedInput = $input.trim();
+			if (!trimmedInput || trimmedInput.length < 2) return [];
+
+			const lowercasedInput = trimmedInput.toLowerCase();
+			const filtered = $data.filter((item) => item.toLowerCase().includes(lowercasedInput));
+
+			filtered.sort((a, b) => {
+				const aLower = a.toLowerCase();
+				const bLower = b.toLowerCase();
+
+				const aStarts = aLower.startsWith(lowercasedInput);
+				const bStarts = bLower.startsWith(lowercasedInput);
+
+				// Prioritize suggestions that start with the input
+				if (aStarts && !bStarts) return -1;
+				if (!aStarts && bStarts) return 1;
+
+				// Then, sort by popularity if available
+				if (popularityMap) {
+					const popA = $popularityMap[a] || 0;
+					const popB = $popularityMap[b] || 0;
+					if (popA !== popB) return popB - popA;
+				}
+
+				// Finally, sort alphabetically
+				return aLower.localeCompare(bLower);
+			});
+
+			return filtered.slice(0, 7);
+		});
+	};
+	const titleSuggestions = createSuggestionStore(query, allUniqueTitles);
+	const authorSuggestions = createSuggestionStore(authorQuery, allUniqueAuthors);
+	// Create a popularity map for tags for sorting suggestions
+	const tagPopularityMap = derived(allNovels, ($allNovels) => {
+		const tagCounts: Record<string, number> = {};
+		for (const novel of $allNovels) {
+			for (const tag of novel.tags ?? []) {
+				tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+			}
+		}
+		return tagCounts;
+	});
+	const allUniqueTags = derived(allNovels, ($allNovels) =>
+		[...new Set($allNovels.flatMap((n) => n.tags || []))].sort()
+	);
+	const tagSuggestions = createSuggestionStore(mustHaveTag, allUniqueTags, tagPopularityMap);
 
 	//== DERIVED STORES (REACTIVE COMPUTATIONS) ========================
 	const filteredNovels = derived(
@@ -89,16 +132,17 @@
 		([$allNovels, $query, $authorQuery, $mustHaveTag, $selectedTags, $showAdult, $status, $minChapters, $maxChapters, $minLikes, $maxLikes, $withCoverOnly, $sortBy, $sortDir]) => {
 			const q = $query.toLowerCase().trim();
 			const filtered = $allNovels.filter(novel => {
-				const matchesQuery = q === '' || novel.title?.toLowerCase().includes(q) || novel.id?.toString() === q; // Updated to match ID
-				const matchesAuthor = $authorQuery === '' || novel.author?.includes($authorQuery);
-				const matchesMustHaveTag = !$mustHaveTag || novel.tags?.includes($mustHaveTag);
-				const matchesOptionalTags = $selectedTags.length === 0 || $selectedTags.some(tag => novel.tags?.includes(tag));
+				const matchesQuery = q === '' || novel.title?.toLowerCase().includes(q) || novel.id?.toString() === q;
+				const matchesAuthor = $authorQuery === '' || novel.author?.toLowerCase().includes($authorQuery.toLowerCase());
+				const sanitizedMustHaveTag = $mustHaveTag.replace(/^#/, '').toLowerCase();
+				const matchesMustHaveTag = !sanitizedMustHaveTag || novel.tags?.some(tag => tag.toLowerCase() === sanitizedMustHaveTag);
+				const matchesOptionalTags = $selectedTags.length === 0 || $selectedTags.some(selectedTag => novel.tags?.some(novelTag => novelTag.toLowerCase() === selectedTag.toLowerCase()));
 				const matchesAdult = $showAdult === 'any' || novel.is_adult?.toString() === $showAdult;
 				const matchesStatus = $status === '' || novel.publication_status === $status;
 				const matchesChapters = novel.chapter_count >= $minChapters && novel.chapter_count <= $maxChapters;
 				const matchesLikes = novel.like_count >= $minLikes && novel.like_count <= $maxLikes;
-				// MODIFIED: Check for cover_url instead of cover_local_path
 				const hasCover = !$withCoverOnly || (novel.cover_url && novel.cover_url.trim() !== '');
+				
 				return matchesQuery && matchesAuthor && matchesMustHaveTag && matchesOptionalTags && matchesAdult && matchesStatus && matchesChapters && matchesLikes && hasCover;
 			});
 			filtered.sort((a, b) => {
@@ -133,14 +177,20 @@
 	//== LIFECYCLE & FUNCTIONS =========================================
 	onMount(async () => {
 		try {
-			// MODIFIED: Use the base path from $app/paths to construct the URL
 			const res = await fetch(`${base}/novelpia_metadata.jsonl`);
 			if (!res.ok) throw new Error(`HTTP error ${res.status}`);
 			const text = await res.text();
-			const novelsData = text.split('\n').filter(Boolean).map(line => JSON.parse(line));
+			const novelsData = text.split('\n').filter(Boolean).map(line => {
+				const novel = JSON.parse(line);
+				if (novel.tags) {
+					novel.tags = novel.tags.map((tag: string) => String(tag).startsWith('#') ? String(tag).substring(1) : String(tag));
+				}
+				return novel;
+			});
 			allNovels.set(novelsData);
 		} catch (err: any) {
 			error.set(`Failed to load metadata: ${err.message}.`);
+			console.error('Failed to load metadata:', err);
 		} finally {
 			isLoading.set(false);
 		}
@@ -150,54 +200,55 @@
 		selectedTags.set([]);
 		mustHaveTag.set('');
 	}
+
 	function goToPage() {
 		if (jumpToPage && jumpToPage > 0 && jumpToPage <= $totalPages) {
 			currentPage.set(jumpToPage);
 		}
-		// Optional: clear the input after jumping
 		const inputElem = document.querySelector('.pagination-input input') as HTMLInputElement;
 		if (inputElem) inputElem.value = '';
 		jumpToPage = null;
 	}
+
+	let customMessage = writable<string | null>(null);
+	function showCustomMessage(message: string) {
+		customMessage.set(message);
+		setTimeout(() => customMessage.set(null), 3000);
+	}
+
 	function exportFilteredNovels() {
-	// Use get() to read the current value of the store
-	const novelsToExport = get(filteredNovels);
+		const novelsToExport = get(filteredNovels);
 
-	if (novelsToExport.length === 0) {
-		alert('No novels found matching your criteria to export.');
-		return;
+		if (novelsToExport.length === 0) {
+			showCustomMessage('No novels found matching your criteria to export.');
+			return;
+		}
+
+		const content = novelsToExport
+			.map(novel => `${novel.title}, ${novel.id}`)
+			.join('\n');
+
+		const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = 'filtered_novels.txt';
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
 	}
 
-	// Format the text as "title, id" per line
-	const content = novelsToExport
-		.map(novel => `${novel.title}, ${novel.id}`)
-		.join('\n');
-
-	const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement('a');
-	a.href = url;
-	a.download = 'filtered_novels.txt';
-	document.body.appendChild(a);
-	a.click();
-	document.body.removeChild(a);
-	URL.revokeObjectURL(url);
-	}
-
-	// MODIFIED: Updated the image error handler to try different file extensions
 	function handleCoverError(e: Event) {
 		const target = e.target as HTMLImageElement;
 		const currentSrc = target.src;
 		
-		// This flag is used to prevent an infinite loop if both webp and jpg fail
 		const hasTriedWebp = currentSrc.includes('.webp');
 		const hasTriedJpg = currentSrc.includes('.jpg');
 
-		// Check if the current source is .webp, if so, try .jpg as a fallback
 		if (hasTriedWebp && !hasTriedJpg) {
 			target.src = currentSrc.replace('.webp', '.jpg');
 		} else {
-			// If .webp already failed, or the original source didn't contain .webp, or .jpg fails, show the placeholder
 			if (target.parentElement) {
 				target.parentElement.classList.add('no-cover');
 			}
@@ -205,10 +256,26 @@
 		}
 	}
 	
-	function selectSuggestion(store: Writable<string>, value: string) {
+	function selectSuggestion(store: Writable<string>, value: string, inputRef: HTMLInputElement) {
 		store.set(value);
+		inputRef.blur();
+	}
+
+	function handleBlurWithTimeout(inputRef: HTMLInputElement) {
+		clearTimeout(blurTimeout);
+		blurTimeout = setTimeout(() => {
+			if (document.activeElement !== inputRef) {
+				// This block can be used for any logic that should happen after blur,
+				// but only if focus hasn't moved to another element within the autocomplete.
+			}
+		}, 150);
+	}
+
+	function handleFocus() {
+		clearTimeout(blurTimeout);
 	}
 </script>
+
 <svelte:head>
 	<title>Novelpedia Browser</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -239,17 +306,24 @@
 		<div class="filter-panel" transition:slide={{ duration: 300 }}>
 			<fieldset>
 				<div class="autocomplete-wrapper">
-					<input type="search" placeholder="Search title or ID..." bind:value={$query} />
-					{#if $titleSuggestions.length > 0}
+					<input
+						type="search"
+						placeholder="Search title or ID..."
+						bind:value={$query}
+						bind:this={queryInput}
+						on:focus={handleFocus}
+						on:blur={() => handleBlurWithTimeout(queryInput)}
+					/>
+					{#if $titleSuggestions.length > 0 && queryInput === document.activeElement}
 						<ul class="suggestions-list">
 							{#each $titleSuggestions as suggestion}
-								<li
-									role="button"
-									tabindex="0"
-									on:mousedown={() => selectSuggestion(query, suggestion)}
-									on:keydown={(e) => e.key === 'Enter' && selectSuggestion(query, suggestion)}
-								>
-									{suggestion}
+								<li>
+									<button
+										class="suggestion-button"
+										on:click={() => selectSuggestion(query, suggestion, queryInput)}
+									>
+										{suggestion}
+									</button>
 								</li>
 							{/each}
 						</ul>
@@ -257,17 +331,24 @@
 				</div>
 
 				<div class="autocomplete-wrapper">
-					<input type="search" placeholder="Author name..." bind:value={$authorQuery} />
-					{#if $authorSuggestions.length > 0}
+					<input
+						type="search"
+						placeholder="Author name..."
+						bind:value={$authorQuery}
+						bind:this={authorQueryInput}
+						on:focus={handleFocus}
+						on:blur={() => handleBlurWithTimeout(authorQueryInput)}
+					/>
+					{#if $authorSuggestions.length > 0 && authorQueryInput === document.activeElement}
 						<ul class="suggestions-list">
 							{#each $authorSuggestions as suggestion}
-								<li
-									role="button"
-									tabindex="0"
-									on:mousedown={() => selectSuggestion(authorQuery, suggestion)}
-									on:keydown={(e) => e.key === 'Enter' && selectSuggestion(authorQuery, suggestion)}
-								>
-									{suggestion}
+								<li>
+									<button
+										class="suggestion-button"
+										on:click={() => selectSuggestion(authorQuery, suggestion, authorQueryInput)}
+									>
+										{suggestion}
+									</button>
 								</li>
 							{/each}
 						</ul>
@@ -275,17 +356,24 @@
 				</div>
 
 				<div class="autocomplete-wrapper">
-					<input type="search" placeholder="Must have this tag..." bind:value={$mustHaveTag} />
-					{#if $tagSuggestions.length > 0}
+					<input
+						type="search"
+						placeholder="Must have this tag..."
+						bind:value={$mustHaveTag}
+						bind:this={mustHaveTagInput}
+						on:focus={handleFocus}
+						on:blur={() => handleBlurWithTimeout(mustHaveTagInput)}
+					/>
+					{#if $tagSuggestions.length > 0 && mustHaveTagInput === document.activeElement}
 						<ul class="suggestions-list">
 							{#each $tagSuggestions as suggestion}
-								<li
-									role="button"
-									tabindex="0"
-									on:mousedown={() => selectSuggestion(mustHaveTag, suggestion)}
-									on:keydown={(e) => e.key === 'Enter' && selectSuggestion(mustHaveTag, suggestion)}
-								>
-									{suggestion}
+								<li>
+									<button
+										class="suggestion-button"
+										on:click={() => selectSuggestion(mustHaveTag, suggestion, mustHaveTagInput)}
+									>
+										{suggestion}
+									</button>
 								</li>
 							{/each}
 						</ul>
@@ -296,12 +384,16 @@
 			<fieldset class="tag-fieldset">
 				<legend>Include at least ONE of these tags</legend>
 				<div class="tag-container">
-					{#each $topTags as tag}
-						<label class="tag-checkbox">
-							<input type="checkbox" bind:group={$selectedTags} value={tag} />
-							<span>{tag}</span>
-						</label>
-					{/each}
+					{#if $topTags.length === 0}
+						<p>Loading tags...</p>
+					{:else}
+						{#each $topTags as tag: string}
+							<label class="tag-checkbox" class:selected={$selectedTags.includes(tag)}>
+								<input type="checkbox" bind:group={$selectedTags} value={tag} />
+								<span>{tag}</span>
+							</label>
+						{/each}
+					{/if}
 				</div>
 				<button class="secondary" on:click={clearTags} disabled={!$mustHaveTag && $selectedTags.length === 0}>Clear Tags</button>
 			</fieldset>
@@ -398,6 +490,12 @@
 		</div>
 	</section>
 
+	{#if $customMessage}
+		<div class="custom-message" transition:fade>
+			<p>{$customMessage}</p>
+		</div>
+	{/if}
+
 	{#if $isLoading}
 		<div class="status-message" transition:fade>
 			<div class="spinner"></div>
@@ -441,9 +539,16 @@
 						<p class="author">{novel.author}</p>
 						<p class="synopsis" title={novel.synopsis}>{novel.synopsis}</p>
 						<div class="tags">
-							{#each novel.tags?.slice(0, 5) as tag}
-								<span class="tag">{tag}</span>
-							{/each}
+							{#if novel.tags}
+								{#each novel.tags as tag: string}
+									<button
+										class="tag clickable"
+										on:click|preventDefault={() => mustHaveTag.set(tag)}
+									>
+										{tag}
+									</button>
+								{/each}
+							{/if}
 						</div>
 						<div class="card-footer">
 							<span>{novel.publication_status}</span>
@@ -475,7 +580,6 @@
     </div>
 
     <button on:click={() => currentPage.update((p) => p + 1)} disabled={$currentPage === $totalPages}>Next ➡</button>
-	</div>
+		</div>
 	{/if}
 </main>
-
