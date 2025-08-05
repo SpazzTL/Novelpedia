@@ -2,7 +2,7 @@
 		--bg-color: #1a1a2e;
 		--surface-color: #16213e;
 		--primary-color: #0f3460;
-		--secondary-color: #e94560;
+		--secondary-color: #9b2337;
 		--font-color: #e0e0e0;
 		--font-color-muted: #a0a0c0;
 		--border-color: #303050;
@@ -138,14 +138,14 @@
 		margin-right: 6px;
 	}
 
-	/* NEW: Style for selected tags */
+	
 	.tag-checkbox.selected {
 		background: var(--secondary-color); /* A more prominent color */
 		border: 1px solid var(--font-color); /* A border to make it stand out */
 		color: white;
 	}
 	.tag-checkbox.selected:hover {
-		background: #d43c55; /* A slightly darker shade on hover for selected */
+		background: #660817; /* A slightly darker shade on hover for selected */
 	}
 
 	.results-header {
