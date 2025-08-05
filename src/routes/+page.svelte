@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	// MODIFIED: Imported Writable and Readable for strong typing
-	import { writable, derived, type Writable, type Readable } from 'svelte/store';
+	import { writable, derived, get, type Writable, type Readable } from 'svelte/store';
 	import { fade, slide } from 'svelte/transition';
 	import { base } from '$app/paths';
 
@@ -42,7 +42,9 @@
 	const perPage = writable(20);
 	const currentPage = writable(1);
 	const showFilters = writable(true);
+	
 
+	let jumpToPage: number | null = null;
 	//== AUTOCOMPLETE DATA STORES ==============================
 	const allUniqueTags = derived(allNovels, ($allNovels) =>
 		[...new Set($allNovels.flatMap((n) => n.tags || []))].sort()
@@ -148,6 +150,39 @@
 		selectedTags.set([]);
 		mustHaveTag.set('');
 	}
+	function goToPage() {
+		if (jumpToPage && jumpToPage > 0 && jumpToPage <= $totalPages) {
+			currentPage.set(jumpToPage);
+		}
+		// Optional: clear the input after jumping
+		const inputElem = document.querySelector('.pagination-input input') as HTMLInputElement;
+		if (inputElem) inputElem.value = '';
+		jumpToPage = null;
+	}
+	function exportFilteredNovels() {
+	// Use get() to read the current value of the store
+	const novelsToExport = get(filteredNovels);
+
+	if (novelsToExport.length === 0) {
+		alert('No novels found matching your criteria to export.');
+		return;
+	}
+
+	// Format the text as "title, id" per line
+	const content = novelsToExport
+		.map(novel => `${novel.title}, ${novel.id}`)
+		.join('\n');
+
+	const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement('a');
+	a.href = url;
+	a.download = 'filtered_novels.txt';
+	document.body.appendChild(a);
+	a.click();
+	document.body.removeChild(a);
+	URL.revokeObjectURL(url);
+	}
 
 	// MODIFIED: Updated the image error handler to try different file extensions
 	function handleCoverError(e: Event) {
@@ -178,6 +213,7 @@
 	<title>Novelpedia Browser</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com" />
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+	<link rel="stylesheet" href="{base}/styles.css" />
 	<link
 		href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
 		rel="stylesheet"
@@ -316,22 +352,41 @@
 
 	<section class="results-header">
 		<div class="sort-controls">
-			<label for="sort-by">Sort by</label>
-			<select id="sort-by" bind:value={$sortBy}>
-				<option value="likes">Likes</option>
-				<option value="chapters">Chapters</option>
-				<option value="title">Title</option>
-			</select>
-			<select bind:value={$sortDir}>
-				<option value="desc">Descending</option>
-				<option value="asc">Ascending</option>
-			</select>
+		<label for="sort-by">Sort by</label>
+		<select id="sort-by" bind:value={$sortBy}>
+			<option value="likes">Likes</option>
+			<option value="chapters">Chapters</option>
+			<option value="title">Title</option>
+		</select>
+		<select bind:value={$sortDir}>
+			<option value="desc">Descending</option>
+			<option value="asc">Ascending</option>
+		</select>
+
+		<button class="secondary" on:click={exportFilteredNovels} title="Export current filtered results to a .txt file">
+			Export Filtered
+		</button>
 		</div>
 
 		<div class="pagination">
-			<button on:click={() => currentPage.update((p) => p - 1)} disabled={$currentPage === 1}>⬅ Prev</button>
-			<span>Page {$currentPage} of {$totalPages}</span>
-			<button on:click={() => currentPage.update((p) => p + 1)} disabled={$currentPage === $totalPages}>Next ➡</button>
+    <button on:click={() => currentPage.update((p) => p - 1)} disabled={$currentPage === 1}>⬅ Prev</button>
+
+    <div class="pagination-input">
+        <span>Page</span>
+        <input 
+            type="number" 
+            bind:value={jumpToPage}
+            placeholder={$currentPage.toString()}
+            on:keydown={(e) => e.key === 'Enter' && goToPage()}
+            min="1"
+            max={$totalPages}
+            aria-label="Jump to page"
+        />
+        <span>of {$totalPages}</span>
+        <button on:click={goToPage} class="secondary">Go</button>
+    </div>
+
+    <button on:click={() => currentPage.update((p) => p + 1)} disabled={$currentPage === $totalPages}>Next ➡</button>
 		</div>
 
 		<div class="per-page-controls">
@@ -402,442 +457,25 @@
 		</div>
 
 		<div class="pagination bottom">
-			<button on:click={() => currentPage.update((p) => p - 1)} disabled={$currentPage === 1}>⬅ Prev</button>
-			<span>Page {$currentPage} of {$totalPages}</span>
-			<button on:click={() => currentPage.update((p) => p + 1)} disabled={$currentPage === $totalPages}>Next ➡</button>
-		</div>
+    <button on:click={() => currentPage.update((p) => p - 1)} disabled={$currentPage === 1}>⬅ Prev</button>
+
+    <div class="pagination-input">
+        <span>Page</span>
+        <input 
+            type="number" 
+            bind:value={jumpToPage}
+            placeholder={$currentPage.toString()}
+            on:keydown={(e) => e.key === 'Enter' && goToPage()}
+            min="1"
+            max={$totalPages}
+            aria-label="Jump to page"
+        />
+        <span>of {$totalPages}</span>
+        <button on:click={goToPage} class="secondary">Go</button>
+    </div>
+
+    <button on:click={() => currentPage.update((p) => p + 1)} disabled={$currentPage === $totalPages}>Next ➡</button>
+	</div>
 	{/if}
 </main>
 
-<style>
-	:root {
-		--bg-color: #1a1a2e;
-		--surface-color: #16213e;
-		--primary-color: #0f3460;
-		--secondary-color: #e94560;
-		--font-color: #e0e0e0;
-		--font-color-muted: #a0a0c0;
-		--border-color: #303050;
-		--radius: 8px;
-		--shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-		font-family: 'Inter', sans-serif;
-	}
-
-	:global(body) {
-		margin: 0;
-		background-color: var(--bg-color);
-		color: var(--font-color);
-	}
-
-	main {
-		max-width: 1400px;
-		margin: 0 auto;
-		padding: 2rem;
-	}
-
-	header {
-		text-align: center;
-		margin-bottom: 2rem;
-	}
-
-	h1 {
-		color: white;
-		font-size: 2.5rem;
-		font-weight: 700;
-	}
-
-	.subtitle {
-		font-size: 1.1rem;
-		color: var(--font-color-muted);
-		margin-top: -1rem;
-	}
-
-	section.controls {
-		display: flex;
-		justify-content: center;
-		margin-bottom: 1.5rem;
-	}
-
-	.filter-panel {
-		background: var(--surface-color);
-		padding: 1.5rem 2rem;
-		border-radius: var(--radius);
-		margin-bottom: 2rem;
-		border: 1px solid var(--border-color);
-		box-shadow: var(--shadow);
-	}
-
-	fieldset {
-		border: none;
-		padding: 0;
-		margin: 0 0 1.5rem 0;
-		display: grid;
-		gap: 1rem;
-		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-	}
-	fieldset:last-child {
-		margin-bottom: 0;
-	}
-
-	.grid-fieldset {
-		grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-	}
-
-	legend {
-		font-weight: 600;
-		margin-bottom: 0.75rem;
-		font-size: 0.9rem;
-		color: var(--font-color-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.5px;
-	}
-
-	.range-inputs {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-	.range-inputs span {
-		color: var(--font-color-muted);
-	}
-
-	.tag-fieldset {
-		display: block;
-	}
-
-	.tag-container {
-		max-height: 120px;
-		overflow-y: auto;
-		background: var(--bg-color);
-		border-radius: var(--radius);
-		padding: 0.75rem;
-		border: 1px solid var(--border-color);
-		margin-bottom: 1rem;
-	}
-
-	.tag-checkbox {
-		display: inline-flex;
-		align-items: center;
-		background: var(--primary-color);
-		border-radius: 1rem;
-		padding: 4px 4px 4px 10px;
-		margin: 4px;
-		cursor: pointer;
-		transition: background 0.2s ease;
-		user-select: none;
-	}
-	.tag-checkbox:hover {
-		background: #1c4a85;
-	}
-	.tag-checkbox input {
-		display: none;
-	}
-	.tag-checkbox span {
-		line-height: 1;
-	}
-	.tag-checkbox input:checked + span {
-		position: relative;
-		left: -2px;
-	}
-	.tag-checkbox input:checked::before {
-		content: '✓';
-		color: var(--secondary-color);
-		font-weight: bold;
-		margin-right: 6px;
-	}
-
-	.results-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		flex-wrap: wrap;
-		gap: 1rem;
-		margin-bottom: 2rem;
-		padding: 1rem;
-		background: var(--surface-color);
-		border-radius: var(--radius);
-	}
-
-	.sort-controls,
-	.pagination,
-	.per-page-controls {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-	}
-
-	.pagination {
-		flex-grow: 1;
-		justify-content: center;
-	}
-	.pagination.bottom {
-		margin-top: 2rem;
-		justify-content: center;
-	}
-
-	input,
-	select {
-		width: 100%;
-		background: var(--bg-color);
-		border: 1px solid var(--border-color);
-		border-radius: var(--radius);
-		padding: 0.75rem;
-		color: var(--font-color);
-		font-size: 1rem;
-		transition:
-			border-color 0.2s,
-			box-shadow 0.2s;
-		box-sizing: border-box;
-	}
-	input:focus,
-	select:focus {
-		outline: none;
-		border-color: var(--secondary-color);
-		box-shadow: 0 0 0 3px rgba(233, 69, 96, 0.3);
-	}
-
-	button {
-		background: var(--primary-color);
-		color: white;
-		border: none;
-		padding: 0.75rem 1.25rem;
-		border-radius: var(--radius);
-		font-weight: 600;
-		cursor: pointer;
-		transition:
-			background-color 0.2s,
-			transform 0.1s;
-	}
-	button:hover {
-		background: #1c4a85;
-	}
-	button:active {
-		transform: scale(0.98);
-	}
-	button:disabled {
-		background: var(--border-color);
-		color: var(--font-color-muted);
-		cursor: not-allowed;
-	}
-	button.secondary {
-		background: transparent;
-		border: 1px solid var(--border-color);
-		color: var(--font-color);
-	}
-	button.secondary:hover:not(:disabled) {
-		background: var(--border-color);
-	}
-	button.toggle-filters {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		background: var(--primary-color);
-	}
-
-	.grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-		gap: 1.5rem;
-	}
-	.card {
-		background: var(--surface-color);
-		border-radius: var(--radius);
-		overflow: hidden;
-		display: flex;
-		flex-direction: column;
-		border: 1px solid var(--border-color);
-		transition:
-			transform 0.2s ease-in-out,
-			box-shadow 0.2s ease-in-out;
-		box-shadow: var(--shadow);
-	}
-	.card:hover {
-		transform: translateY(-5px);
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-	}
-
-	.card-cover {
-		position: relative;
-		aspect-ratio: 2 / 3;
-		background-color: #000;
-	}
-	.card-cover img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		display: block;
-	}
-	.cover-placeholder {
-		display: none;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		width: 100%;
-		height: 100%;
-		color: var(--font-color-muted);
-	}
-	.cover-placeholder svg {
-		width: 50px;
-		height: 50px;
-	}
-	.cover-placeholder span {
-		margin-top: 0.5rem;
-	}
-
-	/* svelte-ignore css-unused-selector */
-	.no-cover .cover-placeholder {
-		display: flex;
-	}
-
-	.card-content {
-		padding: 1rem;
-		display: flex;
-		flex-direction: column;
-		flex-grow: 1;
-	}
-	.card-content h2 {
-		font-size: 1.2rem;
-		margin: 0 0 0.25rem;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	.card-content .author {
-		font-size: 0.9rem;
-		color: var(--font-color-muted);
-		margin: 0 0 1rem;
-	}
-
-	.synopsis {
-		font-size: 0.9rem;
-		line-height: 1.5;
-		color: var(--font-color-muted);
-		margin: 0 0 1rem;
-		flex-grow: 1;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		display: -webkit-box;
-		-webkit-box-orient: vertical;
-		-webkit-line-clamp: 3;
-		line-clamp: 3;
-	}
-
-	.tags {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-		margin-bottom: 1rem;
-	}
-	.tag {
-		background-color: var(--primary-color);
-		color: var(--font-color);
-		padding: 0.25rem 0.6rem;
-		border-radius: 1rem;
-		font-size: 0.75rem;
-	}
-
-	.card-footer {
-		display: flex;
-		justify-content: space-between;
-		font-size: 0.8rem;
-		color: var(--font-color-muted);
-		border-top: 1px solid var(--border-color);
-		padding-top: 0.75rem;
-		margin-top: auto;
-	}
-
-	.status-message {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		padding: 4rem 2rem;
-		text-align: center;
-		color: var(--font-color-muted);
-	}
-	.status-message.error {
-		color: var(--secondary-color);
-	}
-
-	.spinner {
-		border: 4px solid var(--border-color);
-		border-top: 4px solid var(--secondary-color);
-		border-radius: 50%;
-		width: 40px;
-		height: 40px;
-		animation: spin 1s linear infinite;
-		margin-bottom: 1rem;
-	}
-	@keyframes spin {
-		0% {
-			transform: rotate(0deg);
-		}
-		100% {
-			transform: rotate(360deg);
-		}
-	}
-
-	.autocomplete-wrapper {
-		position: relative;
-	}
-
-	.suggestions-list {
-		position: absolute;
-		top: 100%;
-		left: 0;
-		right: 0;
-		background: var(--surface-color);
-		border: 1px solid var(--border-color);
-		border-top: none;
-		border-radius: 0 0 var(--radius) var(--radius);
-		margin: 0;
-		padding: 0;
-		list-style: none;
-		z-index: 100;
-		max-height: 250px;
-		overflow-y: auto;
-		box-shadow: var(--shadow);
-	}
-
-	.suggestions-list li {
-		padding: 0.75rem;
-		cursor: pointer;
-		border-bottom: 1px solid var(--border-color);
-	}
-	.suggestions-list li:last-child {
-		border-bottom: none;
-	}
-
-	.suggestions-list li:hover {
-		background-color: var(--primary-color);
-	}
-
-	.card-link {
-		text-decoration: none;
-		color: inherit;
-	}
-	.card-link:hover .card {
-		transform: translateY(-5px);
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-	}
-
-	/* ADDED: R19 Badge Style */
-	.adult-badge {
-		position: absolute;
-		top: 8px;
-		right: 8px;
-		background-color: var(--secondary-color);
-		color: white;
-		width: 28px;
-		height: 28px;
-		border-radius: 50%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 0.8rem;
-		font-weight: 700;
-		border: 2px solid white;
-		z-index: 5;
-		user-select: none;
-	}
-</style>
