@@ -12,8 +12,11 @@
 		synopsis: string;
 		tags: string[];
 		cover_local_path: string | null;
+<<<<<<< HEAD
 		// ADDED: Novel cover URL
 		cover_url: string | null;
+=======
+>>>>>>> db8d87f02306025ff7199476f630f4243e3ff1ba
 		is_adult: boolean;
 		publication_status: '완결' | '연재중';
 		chapter_count: number;
@@ -41,6 +44,10 @@
 	const perPage = writable(20);
 	const currentPage = writable(1);
 	const showFilters = writable(true);
+<<<<<<< HEAD
+=======
+	
+>>>>>>> db8d87f02306025ff7199476f630f4243e3ff1ba
 
 	//== AUTOCOMPLETE DATA STORES ==============================
 	const allUniqueTags = derived(allNovels, ($allNovels) =>
@@ -79,7 +86,11 @@
 			.slice(0, 50)
 			.map(([tag]) => tag);
 	});
+<<<<<<< HEAD
 
+=======
+	
+>>>>>>> db8d87f02306025ff7199476f630f4243e3ff1ba
 	//== DERIVED STORES (REACTIVE COMPUTATIONS) ========================
 	const filteredNovels = derived(
 		[allNovels, query, authorQuery, mustHaveTag, selectedTags, showAdult, status, minChapters, maxChapters, minLikes, maxLikes, withCoverOnly, sortBy, sortDir],
@@ -94,10 +105,18 @@
 				const matchesStatus = $status === '' || novel.publication_status === $status;
 				const matchesChapters = novel.chapter_count >= $minChapters && novel.chapter_count <= $maxChapters;
 				const matchesLikes = novel.like_count >= $minLikes && novel.like_count <= $maxLikes;
+<<<<<<< HEAD
 				// MODIFIED: Check for cover_url instead of cover_local_path
 				const hasCover = !$withCoverOnly || (novel.cover_url && novel.cover_url.trim() !== '');
 				return matchesQuery && matchesAuthor && matchesMustHaveTag && matchesOptionalTags && matchesAdult && matchesStatus && matchesChapters && matchesLikes && hasCover;
 			});
+=======
+				const hasCover = !$withCoverOnly || (novel.cover_local_path && novel.cover_local_path.trim() !== '');
+
+				return matchesQuery && matchesAuthor && matchesMustHaveTag && matchesOptionalTags && matchesAdult && matchesStatus && matchesChapters && matchesLikes && hasCover;
+			});
+
+>>>>>>> db8d87f02306025ff7199476f630f4243e3ff1ba
 			filtered.sort((a, b) => {
 				let result = 0;
 				switch ($sortBy) {
@@ -119,6 +138,10 @@
 			return $filteredNovels.slice(start, end);
 		}
 	);
+<<<<<<< HEAD
+=======
+	
+>>>>>>> db8d87f02306025ff7199476f630f4243e3ff1ba
 	const totalPages = derived([filteredNovels, perPage], ([$filteredNovels, $perPage]) =>
 		Math.ceil($filteredNovels.length / $perPage) || 1
 	);
@@ -126,7 +149,11 @@
 	filteredNovels.subscribe(() => {
 		currentPage.set(1);
 	});
+<<<<<<< HEAD
 
+=======
+	
+>>>>>>> db8d87f02306025ff7199476f630f4243e3ff1ba
 	//== LIFECYCLE & FUNCTIONS =========================================
 	onMount(async () => {
 		try {
@@ -147,6 +174,7 @@
 		mustHaveTag.set('');
 	}
 
+<<<<<<< HEAD
 	// MODIFIED: Updated the image error handler to try different file extensions
 	function handleCoverError(e: Event) {
 		const target = e.target as HTMLImageElement;
@@ -161,6 +189,16 @@
 			target.src = currentSrc.replace('.webp', '.jpg');
 		} else {
 			// If .webp already failed, or the original source didn't contain .webp, or .jpg fails, show the placeholder
+=======
+	function handleCoverError(e: Event) {
+		const target = e.target as HTMLImageElement;
+		// Check if the current source is .jpg
+		if (target.src.endsWith('.jpg')) {
+			// If .jpg fails, try .webp
+			target.src = target.src.replace('.jpg', '.webp');
+		} else {
+			// If .webp also fails, show the placeholder
+>>>>>>> db8d87f02306025ff7199476f630f4243e3ff1ba
 			if (target.parentElement) {
 				target.parentElement.classList.add('no-cover');
 			}
@@ -366,7 +404,11 @@
 						{/if}
 
 						<img
+<<<<<<< HEAD
 							src={novel.cover_url}
+=======
+							src={`/novelpia_covers_compressed/${novel.id}.webp`}
+>>>>>>> db8d87f02306025ff7199476f630f4243e3ff1ba
 							alt="Cover for {novel.title}"
 							loading="lazy"
 							on:error={handleCoverError}
