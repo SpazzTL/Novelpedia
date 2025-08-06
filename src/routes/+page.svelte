@@ -6,7 +6,7 @@
 
 	//== TYPESCRIPT INTERFACE ==========================================
 	interface Novel {
-		id: number;
+		id: number | string; // Changed to allow string IDs for SFACG
 		title: string;
 		author: string;
 		synopsis: string;
@@ -15,9 +15,10 @@
 		cover_url: string | null;
 		is_adult: boolean;
 		publication_status: '완결' | '연재중';
-		chapter_count: number;
-		like_count: number;
-		source?: string;
+		chapter_count: number; // SFACG data might not have this, default to 0
+		like_count: number;    // SFACG data might not have this, default to 0
+		source?: string; // 'Novelpia', 'kakao', or 'sfacg'
+		time_scraped?: string; // Added for SFACG data, but not used for display/filter
 	}
 
 	//== STATE MANAGEMENT (SVELTE STORES) ==============================
@@ -40,6 +41,8 @@
 	const perPage = writable(20);
 	const currentPage = writable(1);
 	const showFilters = writable(true);
+	// Updated store for source filtering to include 'sfacg'
+	const sourceFilter = writable<'' | 'Novelpia' | 'kakao' | 'sfacg'>('');
 
 	let jumpToPage: number | null = null;
 	// Refs for input elements to manage focus/blur for autocomplete
@@ -128,28 +131,33 @@
 
 	//== DERIVED STORES (REACTIVE COMPUTATIONS) ========================
 	const filteredNovels = derived(
-		[allNovels, query, authorQuery, mustHaveTag, selectedTags, showAdult, status, minChapters, maxChapters, minLikes, maxLikes, withCoverOnly, sortBy, sortDir],
-		([$allNovels, $query, $authorQuery, $mustHaveTag, $selectedTags, $showAdult, $status, $minChapters, $maxChapters, $minLikes, $maxLikes, $withCoverOnly, $sortBy, $sortDir]) => {
+		[allNovels, query, authorQuery, mustHaveTag, selectedTags, showAdult, status, minChapters, maxChapters, minLikes, maxLikes, withCoverOnly, sortBy, sortDir, sourceFilter],
+		([$allNovels, $query, $authorQuery, $mustHaveTag, $selectedTags, $showAdult, $status, $minChapters, $maxChapters, $minLikes, $maxLikes, $withCoverOnly, $sortBy, $sortDir, $sourceFilter]) => {
 			const q = $query.toLowerCase().trim();
 			const filtered = $allNovels.filter(novel => {
-				const matchesQuery = q === '' || novel.title?.toLowerCase().includes(q) || novel.id?.toString() === q;
+				// Ensure novel.id is treated as string for comparison with query
+				const matchesQuery = q === '' || novel.title?.toLowerCase().includes(q) || String(novel.id) === q;
 				const matchesAuthor = $authorQuery === '' || novel.author?.toLowerCase().includes($authorQuery.toLowerCase());
 				const sanitizedMustHaveTag = $mustHaveTag.replace(/^#/, '').toLowerCase();
 				const matchesMustHaveTag = !sanitizedMustHaveTag || novel.tags?.some(tag => tag.toLowerCase() === sanitizedMustHaveTag);
 				const matchesOptionalTags = $selectedTags.length === 0 || $selectedTags.some(selectedTag => novel.tags?.some(novelTag => novelTag.toLowerCase() === selectedTag.toLowerCase()));
 				const matchesAdult = $showAdult === 'any' || novel.is_adult?.toString() === $showAdult;
 				const matchesStatus = $status === '' || novel.publication_status === $status;
-				const matchesChapters = novel.chapter_count >= $minChapters && novel.chapter_count <= $maxChapters;
-				const matchesLikes = novel.like_count >= $minLikes && novel.like_count <= $maxLikes;
+				// Use default 0 if chapter_count or like_count are undefined for filtering
+				const matchesChapters = (novel.chapter_count ?? 0) >= $minChapters && (novel.chapter_count ?? 0) <= $maxChapters;
+				const matchesLikes = (novel.like_count ?? 0) >= $minLikes && (novel.like_count ?? 0) <= $maxLikes;
 				const hasCover = !$withCoverOnly || (novel.cover_url && novel.cover_url.trim() !== '');
+				// Filter for source
+				const matchesSource = $sourceFilter === '' || novel.source === $sourceFilter;
 				
-				return matchesQuery && matchesAuthor && matchesMustHaveTag && matchesOptionalTags && matchesAdult && matchesStatus && matchesChapters && matchesLikes && hasCover;
+				return matchesQuery && matchesAuthor && matchesMustHaveTag && matchesOptionalTags && matchesAdult && matchesStatus && matchesChapters && matchesLikes && hasCover && matchesSource;
 			});
 			filtered.sort((a, b) => {
 				let result = 0;
 				switch ($sortBy) {
-					case 'likes': result = b.like_count - a.like_count; break;
-					case 'chapters': result = b.chapter_count - a.chapter_count; break;
+					// Use default 0 if chapter_count or like_count are undefined for sorting
+					case 'likes': result = (b.like_count ?? 0) - (a.like_count ?? 0); break;
+					case 'chapters': result = (b.chapter_count ?? 0) - (a.chapter_count ?? 0); break;
 					case 'title': result = a.title.localeCompare(b.title); break;
 				}
 				return $sortDir === 'asc' ? -result : result;
@@ -177,17 +185,52 @@
 	//== LIFECYCLE & FUNCTIONS =========================================
 	onMount(async () => {
 		try {
-			const res = await fetch(`${base}/novelpia_metadata.jsonl`);
-			if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-			const text = await res.text();
-			const novelsData = text.split('\n').filter(Boolean).map(line => {
+			// Fetch Novelpia data
+			const novelpiaRes = await fetch(`${base}/novelpia_metadata.jsonl`);
+			if (!novelpiaRes.ok) throw new Error(`HTTP error ${novelpiaRes.status} for Novelpia data`);
+			const novelpiaText = await novelpiaRes.text();
+			const novelpiaNovels: Novel[] = novelpiaText.split('\n').filter(Boolean).map(line => {
 				const novel = JSON.parse(line);
 				if (novel.tags) {
 					novel.tags = novel.tags.map((tag: string) => String(tag).startsWith('#') ? String(tag).substring(1) : String(tag));
 				}
+				// Assign 'Novelpia' as source if not already present
+				novel.source = novel.source || 'Novelpia'; 
 				return novel;
 			});
-			allNovels.set(novelsData);
+
+			// Fetch Kakao novels data
+			const kakaoRes = await fetch(`${base}/kakao_novels.jsonl`);
+			if (!kakaoRes.ok) throw new Error(`HTTP error ${kakaoRes.status} for Kakao data`);
+			const kakaoText = await kakaoRes.text();
+			const kakaoNovels: Novel[] = kakaoText.split('\n').filter(Boolean).map(line => {
+				const novel = JSON.parse(line);
+				if (novel.tags) {
+					novel.tags = novel.tags.map((tag: string) => String(tag).startsWith('#') ? String(tag).substring(1) : String(tag));
+				}
+				// Kakao novels should already have source: 'kakao' from the provided data format
+				return novel;
+			});
+
+			// Fetch SFACG novels data
+			const sfacgRes = await fetch(`${base}/sfacg_novels.jsonl`);
+			if (!sfacgRes.ok) throw new Error(`HTTP error ${sfacgRes.status} for SFACG data`);
+			const sfacgText = await sfacgRes.text();
+			const sfacgNovels: Novel[] = sfacgText.split('\n').filter(Boolean).map(line => {
+				const novel = JSON.parse(line);
+				if (novel.tags) {
+					novel.tags = novel.tags.map((tag: string) => String(tag).startsWith('#') ? String(tag).substring(1) : String(tag));
+				}
+				// SFACG data might not have chapter_count or like_count, default to 0
+				novel.chapter_count = novel.chapter_count ?? 0;
+				novel.like_count = novel.like_count ?? 0;
+				// SFACG novels should already have source: 'sfacg' from the provided data format
+				return novel;
+			});
+
+			// Combine all novels
+			allNovels.set([...novelpiaNovels, ...kakaoNovels, ...sfacgNovels]);
+
 		} catch (err: any) {
 			error.set(`Failed to load metadata: ${err.message}.`);
 			console.error('Failed to load metadata:', err);
@@ -225,7 +268,7 @@
 		}
 
 		const content = novelsToExport
-			.map(novel => `${novel.title}, ${novel.id}`)
+			.map(novel => `${novel.title}, ${novel.id}, ${novel.source || 'N/A'}`) // Include source in export
 			.join('\n');
 
 		const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
@@ -290,7 +333,7 @@
 <main>
 	<header>
 		<h1>📚 Novelpedia Browser</h1>
-		<p class="subtitle">Search and filter through the Novelpia metadata library.</p>
+		<p class="subtitle">Search and filter through the Novelpia, Kakao, and SFACG novel libraries.</p>
 	</header>
 
 	<section class="controls">
@@ -438,6 +481,16 @@
 						<option value={true}>With Cover Only</option>
 					</select>
 				</div>
+				<!-- Source filter including SFACG -->
+				<div>
+					<label for="source-filter">Source</label>
+					<select id="source-filter" bind:value={$sourceFilter}>
+						<option value="">All Sources</option>
+						<option value="Novelpia">Novelpia</option>
+						<option value="kakao">Kakao</option>
+						<option value="sfacg">SFACG</option>
+					</select>
+				</div>
 			</fieldset>
 		</div>
 	{/if}
@@ -512,7 +565,14 @@
 	{:else}
 		<div class="grid">
 			{#each $pagedNovels as novel (novel.id)}
-			<a href={novel.source === 'Novelpia' ? `https://novelpia.com/novel/${novel.id}` : '#'} target="_blank" rel="noopener noreferrer" class="card-link">
+			<!-- Updated href based on novel source -->
+			<a href={
+				novel.source === 'Novelpia' ? `https://novelpia.com/novel/${novel.id}` : 
+				novel.source === 'kakao' ? `https://page.kakao.com/content/${novel.id}` :
+				novel.source === 'sfacg' ? `https://book.sfacg.com/Novel/${novel.id}/` : // SFACG novel link format
+				'#'
+				} 
+				target="_blank" rel="noopener noreferrer" class="card-link">
 				<div class="card" transition:fade>
 					<div class="card-cover">
 						{#if novel.is_adult}
@@ -554,6 +614,10 @@
 							<span>{novel.publication_status}</span>
 							<span>{novel.chapter_count} Chapters</span>
 							<span>❤️ {novel.like_count.toLocaleString()}</span>
+							<!-- Display source if available -->
+							{#if novel.source}
+								<span class="novel-source">Source: {novel.source}</span>
+							{/if}
 						</div>
 					</div>
 				</div>
