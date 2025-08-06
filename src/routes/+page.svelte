@@ -41,7 +41,6 @@
 	const perPage = writable(20);
 	const currentPage = writable(1);
 	const showFilters = writable(true);
-	// Updated store for source filtering to include 'sfacg'
 	const sourceFilter = writable<'' | 'Novelpia' | 'kakao' | 'sfacg'>('');
 
 	let jumpToPage: number | null = null;
@@ -53,17 +52,31 @@
 	// Timeout for blur event to allow click on suggestion.
 	let blurTimeout: number;
 
-	//== AUTOCOMPLETE DATA STORES ==============================
-	const allUniqueAuthors = derived(allNovels, ($allNovels) =>
+	//== DERIVED STORES (REACTIVE COMPUTATIONS) ========================
+
+	// This derived store holds novels filtered ONLY by source, for tag generation
+	const sourceFilteredNovels = derived(
+		[allNovels, sourceFilter],
+		([$allNovels, $sourceFilter]) => {
+			if ($sourceFilter === '') {
+				return $allNovels;
+			}
+			return $allNovels.filter(novel => novel.source === $sourceFilter);
+		}
+	);
+
+	// These autocomplete data stores now depend on the sourceFilteredNovels
+	// so that tag suggestions are only based on the selected source.
+	const allUniqueAuthors = derived(allNovels, ($allNovels) => // Authors still based on all novels for broader search
 		[...new Set($allNovels.map((n) => n.author))].sort()
 	);
-	const allUniqueTitles = derived(allNovels, ($allNovels) =>
+	const allUniqueTitles = derived(allNovels, ($allNovels) => // Titles still based on all novels for broader search
 		[...new Set($allNovels.map((n) => n.title))].sort()
 	);
 	
-	const topTags = derived(allNovels, ($allNovels) => {
+	const topTags = derived(sourceFilteredNovels, ($sourceFilteredNovels) => {
 		const tagCounts: Record<string, number> = {};
-		for (const novel of $allNovels) {
+		for (const novel of $sourceFilteredNovels) {
 			for (const tag of novel.tags ?? []) {
 				tagCounts[tag] = (tagCounts[tag] || 0) + 1;
 			}
@@ -112,24 +125,28 @@
 			return filtered.slice(0, 7);
 		});
 	};
-	const titleSuggestions = createSuggestionStore(query, allUniqueTitles);
-	const authorSuggestions = createSuggestionStore(authorQuery, allUniqueAuthors);
-	// Create a popularity map for tags for sorting suggestions
-	const tagPopularityMap = derived(allNovels, ($allNovels) => {
+
+	// Create a popularity map for tags for sorting suggestions (now based on sourceFilteredNovels)
+	const tagPopularityMap = derived(sourceFilteredNovels, ($sourceFilteredNovels) => {
 		const tagCounts: Record<string, number> = {};
-		for (const novel of $allNovels) {
+		for (const novel of $sourceFilteredNovels) {
 			for (const tag of novel.tags ?? []) {
 				tagCounts[tag] = (tagCounts[tag] || 0) + 1;
 			}
 		}
 		return tagCounts;
 	});
-	const allUniqueTags = derived(allNovels, ($allNovels) =>
-		[...new Set($allNovels.flatMap((n) => n.tags || []))].sort()
+
+	const allUniqueTags = derived(sourceFilteredNovels, ($sourceFilteredNovels) =>
+		[...new Set($sourceFilteredNovels.flatMap((n) => n.tags || []))].sort()
 	);
+
+	const titleSuggestions = createSuggestionStore(query, allUniqueTitles);
+	const authorSuggestions = createSuggestionStore(authorQuery, allUniqueAuthors);
 	const tagSuggestions = createSuggestionStore(mustHaveTag, allUniqueTags, tagPopularityMap);
 
-	//== DERIVED STORES (REACTIVE COMPUTATIONS) ========================
+
+	// The main filtered novels list, which considers ALL filters
 	const filteredNovels = derived(
 		[allNovels, query, authorQuery, mustHaveTag, selectedTags, showAdult, status, minChapters, maxChapters, minLikes, maxLikes, withCoverOnly, sortBy, sortDir, sourceFilter],
 		([$allNovels, $query, $authorQuery, $mustHaveTag, $selectedTags, $showAdult, $status, $minChapters, $maxChapters, $minLikes, $maxLikes, $withCoverOnly, $sortBy, $sortDir, $sourceFilter]) => {
