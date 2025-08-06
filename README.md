@@ -1,6 +1,6 @@
 # Novelpedia Browser
 
-A browser for easily finding and sorting novels on Novelpia.
+A browser for easily finding and sorting novels from various platforms, such as kakao, novelpia, and sfacg
 
 ## About
 
@@ -16,7 +16,4 @@ The Novelpedia Browser is a tool designed to make finding and sorting novels on 
 
     Clean UI: A user-friendly interface that makes Browse a pleasure.
 
-## Future Plans
-
-While the current version is focused exclusively on Novelpia, we have plans to expand our scope to include novels from other popular sites in the future.
 
