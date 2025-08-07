@@ -6,19 +6,21 @@
 
 	//== TYPESCRIPT INTERFACE ==========================================
 	interface Novel {
-		id: number | string; // Changed to allow string IDs for SFACG
+		id: number | string;
 		title: string;
 		author: string;
 		synopsis: string;
 		tags: string[];
 		cover_local_path: string | null;
 		cover_url: string | null;
+		large_cover_url?: string | null; // Added large_cover_url
 		is_adult: boolean;
 		publication_status: '완결' | '연재중';
-		chapter_count: number; // SFACG data might not have this, default to 0
-		like_count: number;    // SFACG data might not have this, default to 0
-		source?: string; // 'Novelpia', 'kakao', or 'sfacg'
-		time_scraped?: string; // Added for SFACG data, but not used for display/filter
+		chapter_count: number;
+		like_count: number;
+		views?: number; // Added views
+		source?: string;
+		time_scraped?: string;
 	}
 
 	//== STATE MANAGEMENT (SVELTE STORES) ==============================
@@ -172,9 +174,10 @@
 			filtered.sort((a, b) => {
 				let result = 0;
 				switch ($sortBy) {
-					// Use default 0 if chapter_count or like_count are undefined for sorting
+					// Use default 0 if chapter_count, like_count, or views are undefined for sorting
 					case 'likes': result = (b.like_count ?? 0) - (a.like_count ?? 0); break;
 					case 'chapters': result = (b.chapter_count ?? 0) - (a.chapter_count ?? 0); break;
+					case 'views': result = (b.views ?? 0) - (a.views ?? 0); break; // Sort by views
 					case 'title': result = a.title.localeCompare(b.title); break;
 				}
 				return $sortDir === 'asc' ? -result : result;
@@ -213,6 +216,7 @@
 				}
 				// Assign 'Novelpia' as source if not already present
 				novel.source = novel.source || 'Novelpia'; 
+				novel.views = novel.views ?? 0; // Default views for Novelpia
 				return novel;
 			});
 
@@ -226,6 +230,9 @@
 					novel.tags = novel.tags.map((tag: string) => String(tag).startsWith('#') ? String(tag).substring(1) : String(tag));
 				}
 				// Kakao novels should already have source: 'kakao' from the provided data format
+				novel.chapter_count = novel.chapter_count ?? 0; // Ensure chapter_count is number
+				novel.like_count = novel.like_count ?? 0; // Ensure like_count is number
+				novel.views = novel.views ?? 0; // Default views for Kakao
 				return novel;
 			});
 
@@ -241,7 +248,7 @@
 				// SFACG data might not have chapter_count or like_count, default to 0
 				novel.chapter_count = novel.chapter_count ?? 0;
 				novel.like_count = novel.like_count ?? 0;
-				// SFACG novels should already have source: 'sfacg' from the provided data format
+				novel.views = novel.views ?? 0; // Default views for SFACG
 				return novel;
 			});
 
@@ -301,14 +308,26 @@
 
 	function handleCoverError(e: Event) {
 		const target = e.target as HTMLImageElement;
-		const currentSrc = target.src;
-		
-		const hasTriedWebp = currentSrc.includes('.webp');
-		const hasTriedJpg = currentSrc.includes('.jpg');
+		const novelId = target.dataset.novelId; // Get the novel ID from a data attribute
+		const novelSource = target.dataset.novelSource; // Get the novel source from a data attribute
 
-		if (hasTriedWebp && !hasTriedJpg) {
-			target.src = currentSrc.replace('.webp', '.jpg');
+		// Find the novel in allNovels to access its original URLs
+		const novel = get(allNovels).find(n => String(n.id) === novelId && n.source === novelSource);
+
+		if (!novel) {
+			console.error(`Novel with ID ${novelId} and source ${novelSource} not found for cover error handling.`);
+			if (target.parentElement) {
+				target.parentElement.classList.add('no-cover');
+			}
+			target.style.display = 'none';
+			return;
+		}
+
+		// If large_cover_url failed, try cover_url
+		if (target.src === novel.large_cover_url && novel.cover_url) {
+			target.src = novel.cover_url;
 		} else {
+			// If both failed or only cover_url was available and failed
 			if (target.parentElement) {
 				target.parentElement.classList.add('no-cover');
 			}
@@ -518,6 +537,7 @@
 		<select id="sort-by" bind:value={$sortBy}>
 			<option value="likes">Likes</option>
 			<option value="chapters">Chapters</option>
+			<option value="views">Views</option> <!-- New sort option -->
 			<option value="title">Title</option>
 		</select>
 		<select bind:value={$sortDir}>
@@ -597,10 +617,12 @@
 						{/if}
 
 						<img
-							src={novel.cover_url}
+							src={novel.large_cover_url || novel.cover_url}
 							alt="Cover for {novel.title}"
 							loading="lazy"
 							on:error={handleCoverError}
+							data-novel-id={novel.id}
+							data-novel-source={novel.source}
 						/>
 						<div class="cover-placeholder">
 							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"
@@ -631,6 +653,9 @@
 							<span>{novel.publication_status}</span>
 							<span>{novel.chapter_count} Chapters</span>
 							<span>❤️ {novel.like_count.toLocaleString()}</span>
+							{#if novel.views !== undefined}
+								<span>👁️ {novel.views.toLocaleString()}</span> <!-- Display views -->
+							{/if}
 							<!-- Display source if available -->
 							{#if novel.source}
 								<span class="novel-source">Source: {novel.source}</span>
