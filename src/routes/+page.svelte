@@ -27,7 +27,8 @@
 	const isLoading = writable<boolean>(true);
 	const query = writable('');
 	const authorQuery = writable('');
-	const mustHaveTag = writable('');
+	const mustHaveTagQuery = writable('');
+	const mustHaveTags = writable<string[]>([]);
 	const selectedTags = writable<string[]>([]);
 	const excludedTags = writable<string[]>([]);
 	const excludeTagQuery = writable('');
@@ -125,7 +126,7 @@
 
 	const titleSuggestions = createSuggestionStore(query, allUniqueTitles);
 	const authorSuggestions = createSuggestionStore(authorQuery, allUniqueAuthors);
-	const tagSuggestions = createSuggestionStore(mustHaveTag, allUniqueTags, tagPopularityMap);
+	const tagSuggestions = createSuggestionStore(mustHaveTagQuery, allUniqueTags, tagPopularityMap);
 	const excludeTagSuggestions = createSuggestionStore(excludeTagQuery, allUniqueTags, tagPopularityMap);
 
 	const filteredNovels = derived(
@@ -133,7 +134,7 @@
 			allNovels,
 			query,
 			authorQuery,
-			mustHaveTag,
+			mustHaveTags,
 			selectedTags,
 			excludedTags,
 			showAdult,
@@ -151,7 +152,7 @@
 			$allNovels,
 			$query,
 			$authorQuery,
-			$mustHaveTag,
+			$mustHaveTags,
 			$selectedTags,
 			$excludedTags,
 			$showAdult,
@@ -166,7 +167,6 @@
 			$sourceFilter
 		]) => {
 			const q = $query.toLowerCase().trim();
-			const sanitizedMustHaveTag = $mustHaveTag.replace(/^#/, '').toLowerCase();
 
 			const filtered = $allNovels.filter((novel) => {
 				const novelTagsLower = novel.tags?.map((t) => t.toLowerCase()) ?? [];
@@ -176,8 +176,9 @@
 				const matchesAuthor =
 					$authorQuery === '' ||
 					novel.author?.toLowerCase().includes($authorQuery.toLowerCase());
-				const matchesMustHaveTag =
-					!sanitizedMustHaveTag || novelTagsLower.includes(sanitizedMustHaveTag);
+				const matchesMustHaveTags =
+					$mustHaveTags.length === 0 ||
+					$mustHaveTags.every((requiredTag) => novelTagsLower.includes(requiredTag));
 				const matchesOptionalTags =
 					$selectedTags.length === 0 ||
 					$selectedTags.some((selectedTag) => novelTagsLower.includes(selectedTag.toLowerCase()));
@@ -197,7 +198,7 @@
 				return (
 					matchesQuery &&
 					matchesAuthor &&
-					matchesMustHaveTag &&
+					matchesMustHaveTags &&
 					matchesOptionalTags &&
 					matchesExcludedTags &&
 					matchesAdult &&
@@ -317,9 +318,34 @@
 
 	function clearTags() {
 		selectedTags.set([]);
-		mustHaveTag.set('');
+		mustHaveTags.set([]);
+		mustHaveTagQuery.set('');
 		excludedTags.set([]);
 		excludeTagQuery.set('');
+	}
+
+	function addMustHaveTag(tag: string) {
+		const cleanTag = tag.trim().toLowerCase();
+		if (cleanTag && !get(mustHaveTags).includes(cleanTag)) {
+			mustHaveTags.update((current) => [...current, cleanTag]);
+		}
+		mustHaveTagQuery.set('');
+	}
+
+	function handleMustHaveKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			addMustHaveTag(get(mustHaveTagQuery));
+		}
+	}
+
+	function removeMustHaveTag(tagToRemove: string) {
+		mustHaveTags.update((current) => current.filter((t) => t !== tagToRemove));
+	}
+
+	function selectMustHaveSuggestion(value: string) {
+		addMustHaveTag(value);
+		mustHaveTagInput.blur();
 	}
 
 	function addExcludedTag(tag: string) {
@@ -510,73 +536,91 @@
 						</ul>
 					{/if}
 				</div>
-
-				<div class="autocomplete-wrapper">
-					<input
-						type="search"
-						placeholder="Must have this tag..."
-						bind:value={$mustHaveTag}
-						bind:this={mustHaveTagInput}
-						on:focus={handleFocus}
-						on:blur={() => handleBlurWithTimeout(mustHaveTagInput)}
-					/>
-					{#if $tagSuggestions.length > 0 && mustHaveTagInput === document.activeElement}
-						<ul class="suggestions-list">
-							{#each $tagSuggestions as suggestion}
-								<li>
-									<button
-										class="suggestion-button"
-										on:click={() => selectSuggestion(mustHaveTag, suggestion, mustHaveTagInput)}
-									>
-										{suggestion}
-									</button>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				</div>
-
-				<div class="autocomplete-wrapper">
-					<input
-						type="search"
-						placeholder="Exclude tags..."
-						bind:value={$excludeTagQuery}
-						bind:this={excludeTagInput}
-						on:keydown={handleExcludeKeydown}
-						on:focus={handleFocus}
-						on:blur={() => handleBlurWithTimeout(excludeTagInput)}
-					/>
-					{#if $excludeTagSuggestions.length > 0 && excludeTagInput === document.activeElement}
-						<ul class="suggestions-list">
-							{#each $excludeTagSuggestions as suggestion}
-								<li>
-									<button
-										class="suggestion-button"
-										on:click={() => selectExcludeSuggestion(suggestion)}>{suggestion}</button
-									>
-								</li>
-							{/each}
-						</ul>
-					{/if}
-				</div>
 			</fieldset>
 
-			{#if $excludedTags.length > 0}
-				<div class="excluded-tags-display">
-					<span>Excluding:</span>
-					{#each $excludedTags as tag}
-						<span class="tag-badge excluded">
-							{tag}
-							<button class="remove-tag-btn" on:click={() => removeExcludedTag(tag)} title="Remove tag"
-								>&times;</button
-							>
-						</span>
-					{/each}
-				</div>
-			{/if}
-
 			<fieldset class="tag-fieldset">
-				<legend>Include at least ONE of these tags</legend>
+				<legend>Tag Filters</legend>
+				<div class="tag-inputs-grid">
+					<div class="autocomplete-wrapper">
+						<input
+							type="search"
+							placeholder="Must have tags..."
+							bind:value={$mustHaveTagQuery}
+							bind:this={mustHaveTagInput}
+							on:keydown={handleMustHaveKeydown}
+							on:focus={handleFocus}
+							on:blur={() => handleBlurWithTimeout(mustHaveTagInput)}
+						/>
+						{#if $tagSuggestions.length > 0 && mustHaveTagInput === document.activeElement}
+							<ul class="suggestions-list">
+								{#each $tagSuggestions as suggestion}
+									<li>
+										<button
+											class="suggestion-button"
+											on:click={() => selectMustHaveSuggestion(suggestion)}
+										>
+											{suggestion}
+										</button>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</div>
+
+					<div class="autocomplete-wrapper">
+						<input
+							type="search"
+							placeholder="Exclude tags..."
+							bind:value={$excludeTagQuery}
+							bind:this={excludeTagInput}
+							on:keydown={handleExcludeKeydown}
+							on:focus={handleFocus}
+							on:blur={() => handleBlurWithTimeout(excludeTagInput)}
+						/>
+						{#if $excludeTagSuggestions.length > 0 && excludeTagInput === document.activeElement}
+							<ul class="suggestions-list">
+								{#each $excludeTagSuggestions as suggestion}
+									<li>
+										<button
+											class="suggestion-button"
+											on:click={() => selectExcludeSuggestion(suggestion)}>{suggestion}</button
+										>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</div>
+				</div>
+
+				{#if $mustHaveTags.length > 0}
+					<div class="included-tags-display">
+						<span>Requiring:</span>
+						{#each $mustHaveTags as tag}
+							<span class="tag-badge included">
+								{tag}
+								<button class="remove-tag-btn" on:click={() => removeMustHaveTag(tag)} title="Remove tag"
+									>&times;</button
+								>
+							</span>
+						{/each}
+					</div>
+				{/if}
+
+				{#if $excludedTags.length > 0}
+					<div class="excluded-tags-display">
+						<span>Excluding:</span>
+						{#each $excludedTags as tag}
+							<span class="tag-badge excluded">
+								{tag}
+								<button class="remove-tag-btn" on:click={() => removeExcludedTag(tag)} title="Remove tag"
+									>&times;</button
+								>
+							</span>
+						{/each}
+					</div>
+				{/if}
+
+				<p class="fieldset-subtitle">Include at least ONE of these tags</p>
 				<div class="tag-container">
 					{#if $topTags.length === 0}
 						<p>Loading tags...</p>
@@ -592,8 +636,9 @@
 				<button
 					class="secondary"
 					on:click={clearTags}
-					disabled={!$mustHaveTag && $selectedTags.length === 0 && $excludedTags.length === 0}
-					>Clear All Tags</button
+					disabled={$mustHaveTags.length === 0 &&
+						$selectedTags.length === 0 &&
+						$excludedTags.length === 0}>Clear All Tags</button
 				>
 			</fieldset>
 
@@ -774,7 +819,7 @@
 									{#each novel.tags as tag}
 										<button
 											class="tag clickable"
-											on:click|preventDefault={() => mustHaveTag.set(tag)}
+											on:click|preventDefault={() => addMustHaveTag(tag)}
 										>
 											{tag}
 										</button>
