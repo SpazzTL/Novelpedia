@@ -449,7 +449,7 @@
 		left: 50%;
 		transform: translateX(-50%);
 		background-color: var(--primary-color);
-		color: white;
+		color: hsl(258, 63%, 42%);
 		padding: 15px 25px;
 		border-radius: var(--radius);
 		box-shadow: var(--shadow);
@@ -470,13 +470,13 @@
         align-items: center;
         margin-top: 0.5rem;
         padding: 0.5rem;
-        background-color: #f7f7f7;
+        background-color: hsl(258, 63%, 42%);
         border-radius: 4px;
         font-size: 0.9em;
     }
     .tag-badge.excluded {
-        background-color: #f8d7da;
-        color: #721c24;
+        background-color: #72121a;
+        color: #ffffff;
         padding: 0.25em 0.5em;
         border-radius: 12px;
         display: inline-flex;
@@ -486,7 +486,7 @@
     .remove-tag-btn {
         border: none;
         background: none;
-        color: #721c24;
+        color: #000000;
         cursor: pointer;
         padding: 0;
         margin: 0;
@@ -497,5 +497,5 @@
         margin-top: 1rem;
         margin-bottom: 0.5rem;
         font-weight: 600;
-        color: #555;
+        color: #3a2828;
     }
