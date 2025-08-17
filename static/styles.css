@@ -457,3 +457,45 @@
 		text-align: center;
 		font-size: 1rem;
 	}
+	 .tag-inputs-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+    .excluded-tags-display {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+        margin-top: 0.5rem;
+        padding: 0.5rem;
+        background-color: #f7f7f7;
+        border-radius: 4px;
+        font-size: 0.9em;
+    }
+    .tag-badge.excluded {
+        background-color: #f8d7da;
+        color: #721c24;
+        padding: 0.25em 0.5em;
+        border-radius: 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4em;
+    }
+    .remove-tag-btn {
+        border: none;
+        background: none;
+        color: #721c24;
+        cursor: pointer;
+        padding: 0;
+        margin: 0;
+        line-height: 1;
+        font-weight: bold;
+    }
+    .fieldset-subtitle {
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+        color: #555;
+    }
