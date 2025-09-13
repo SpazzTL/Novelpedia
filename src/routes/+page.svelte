@@ -75,11 +75,24 @@
 				tagCounts[tag] = (tagCounts[tag] || 0) + 1;
 			}
 		}
+		
+		    console.log(Object.entries(tagCounts).sort(([, countA], [, countB]) => countB - countA));
+		
 		return Object.entries(tagCounts)
 			.sort(([, countA], [, countB]) => countB - countA)
 			.slice(0, 50)
 			.map(([tag]) => tag);
-	});
+
+	
+		});
+
+
+
+
+	
+
+
+
 
 	const createSuggestionStore = (
 		inputStore: Writable<string>,
@@ -250,24 +263,52 @@
 	});
 
 	onMount(async () => {
-		try {
-			const novelpiaRes = await fetch(`${base}/novelpia_metadata.jsonl`);
-			if (!novelpiaRes.ok) throw new Error(`HTTP error ${novelpiaRes.status} for Novelpia data`);
-			const novelpiaText = await novelpiaRes.text();
-			const novelpiaNovels: Novel[] = novelpiaText
-				.split('\n')
-				.filter(Boolean)
-				.map((line) => {
-					const novel = JSON.parse(line);
-					if (novel.tags) {
-						novel.tags = novel.tags.map((tag: string) =>
-							String(tag).startsWith('#') ? String(tag).substring(1) : String(tag)
-						);
+		 try {
+        const novelpiaRes = await fetch(`${base}/novelpia_metadata.jsonl`);
+        if (!novelpiaRes.ok) {
+            throw new Error(`HTTP error! status: ${novelpiaRes.status}`);
+        }
+
+        const novelpiaText = await novelpiaRes.text();
+        const novelpiaNovels = novelpiaText
+            .split('\n')
+            .filter(line => line.trim() !== '') // More explicit check for empty lines
+            .map(line => {
+                try {
+                    const novel = JSON.parse(line);
+                    
+                    // Sanitize tags
+                    if (novel.tags && Array.isArray(novel.tags)) {
+                        novel.tags = novel.tags.map((tag: any) =>
+                            String(tag).startsWith('#') ? String(tag).substring(1) : String(tag)
+                        );
+                    } else {
+                        novel.tags = []; // Ensure tags is always an array
+                    }
+
+                    // Assign default values if properties are missing
+                    novel.source = novel.source || 'Novelpia';
+                    novel.views = novel.view_count ?? 0;
+                    novel.likes = novel.like_count ?? 0; 
+
+                    if (novel.is_complete == 1) {
+						novel.status = '완결'; // 'Completed' 
+					} else {
+						novel.status = '연재중'; // 'Ongoing' 
 					}
-					novel.source = novel.source || 'Novelpia';
-					novel.views = novel.views ?? 0;
-					return novel;
-				});
+                    
+                    return novel;
+                } catch (parseError) {
+                    console.error('Failed to parse a line of JSONL:', parseError, 'Line:', line);
+                    return null; // Return null for malformed lines
+                }
+            })
+            .filter(Boolean); // Filter out any lines that failed to parse
+
+        console.log('Successfully loaded and parsed Novelpia data:', novelpiaNovels);
+        // You can now use novelpiaNovels in your application's state.
+
+    
 
 			const kakaoRes = await fetch(`${base}/kakao_novels.jsonl`);
 			if (!kakaoRes.ok) throw new Error(`HTTP error ${kakaoRes.status} for Kakao data`);
