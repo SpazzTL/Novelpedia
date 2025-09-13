@@ -291,10 +291,10 @@
                     novel.views = novel.view_count ?? 0;
                     novel.likes = novel.like_count ?? 0; 
 
-                    if (novel.is_complete == 1) {
-						novel.status = '완결'; // 'Completed' 
+					if (novel.is_complete == 1) {
+						novel.publication_status = '완결'; // 'Completed'
 					} else {
-						novel.status = '연재중'; // 'Ongoing' 
+						novel.publication_status = '연재중'; // 'Ongoing'
 					}
                     
                     return novel;
