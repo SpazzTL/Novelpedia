@@ -881,7 +881,14 @@ novel.cover_url}
 								{#if novel.source}
 									<span class="novel-source">Source: {novel.source}</span>
 								{/if}
+								
 							</div>
+							{#if novel.update_date}
+								 	<span class="novel-date">Updated: {novel.update_date}</span>
+								{/if}
+							{#if novel.create_date}
+								 	<span class="novel-date">Created: {novel.create_date}</span>
+								{/if}
 						</div>
 					</div>
 				</a>
