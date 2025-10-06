@@ -20,6 +20,9 @@
 		views?: number;
 		source?: string;
 		time_scraped?: string;
+		// Added create_date and update_date fields
+		create_date?: string; // New: YYYY-MM-DD HH:MM:SS format
+		update_date?: string; // New: YYYY-MM-DD HH:MM:SS format
 	}
 
 	const allNovels = writable<Novel[]>([]);
@@ -39,8 +42,9 @@
 	const minLikes = writable(0);
 	const maxLikes = writable(999999);
 	const withCoverOnly = writable(false);
-	const sortBy = writable('likes');
-	const sortDir = writable('desc');
+	// Modified to include 'created' and 'updated'
+	const sortBy = writable<'likes' | 'chapters' | 'views' | 'title' | 'created' | 'updated'>('likes'); 
+	const sortDir = writable<'desc' | 'asc'>('desc'); 
 	const perPage = writable(20);
 	const currentPage = writable(1);
 	const showFilters = writable(true);
@@ -52,14 +56,12 @@
 	let mustHaveTagInput: HTMLInputElement;
 	let excludeTagInput: HTMLInputElement;
 	let blurTimeout: number;
-
 	const sourceFilteredNovels = derived([allNovels, sourceFilter], ([$allNovels, $sourceFilter]) => {
 		if ($sourceFilter === '') {
 			return $allNovels;
 		}
 		return $allNovels.filter((novel) => novel.source === $sourceFilter);
 	});
-
 	const allUniqueAuthors = derived(allNovels, ($allNovels) =>
 		[...new Set($allNovels.map((n) => n.author))].sort()
 	);
@@ -67,7 +69,6 @@
 	const allUniqueTitles = derived(allNovels, ($allNovels) =>
 		[...new Set($allNovels.map((n) => n.title))].sort()
 	);
-
 	const topTags = derived(sourceFilteredNovels, ($sourceFilteredNovels) => {
 		const tagCounts: Record<string, number> = {};
 		for (const novel of $sourceFilteredNovels) {
@@ -85,15 +86,6 @@
 
 	
 		});
-
-
-
-
-	
-
-
-
-
 	const createSuggestionStore = (
 		inputStore: Writable<string>,
 		dataStore: Readable<string[]>,
@@ -132,7 +124,6 @@
 		}
 		return tagCounts;
 	});
-
 	const allUniqueTags = derived(sourceFilteredNovels, ($sourceFilteredNovels) =>
 		[...new Set($sourceFilteredNovels.flatMap((n) => n.tags || []))].sort()
 	);
@@ -141,7 +132,6 @@
 	const authorSuggestions = createSuggestionStore(authorQuery, allUniqueAuthors);
 	const tagSuggestions = createSuggestionStore(mustHaveTagQuery, allUniqueTags, tagPopularityMap);
 	const excludeTagSuggestions = createSuggestionStore(excludeTagQuery, allUniqueTags, tagPopularityMap);
-
 	const filteredNovels = derived(
 		[
 			allNovels,
@@ -207,7 +197,6 @@
 					(novel.like_count ?? 0) >= $minLikes && (novel.like_count ?? 0) <= $maxLikes;
 				const hasCover = !$withCoverOnly || (novel.cover_url && novel.cover_url.trim() !== '');
 				const matchesSource = $sourceFilter === '' || novel.source === $sourceFilter;
-
 				return (
 					matchesQuery &&
 					matchesAuthor &&
@@ -222,7 +211,6 @@
 					matchesSource
 				);
 			});
-
 			filtered.sort((a, b) => {
 				let result = 0;
 				switch ($sortBy) {
@@ -237,6 +225,14 @@
 						break;
 					case 'title':
 						result = a.title.localeCompare(b.title);
+						break;
+					case 'created':
+						// Sort by create_date, newer first (descending) by default.
+						result = (b.create_date ?? '0').localeCompare(a.create_date ?? '0');
+						break;
+					case 'updated':
+						// Sort by update_date, newer first (descending) by default.
+						result = (b.update_date ?? '0').localeCompare(a.update_date ?? '0');
 						break;
 				}
 				return $sortDir === 'asc' ? -result : result;
@@ -253,7 +249,6 @@
 			return $filteredNovels.slice(start, end);
 		}
 	);
-
 	const totalPages = derived([filteredNovels, perPage], ([$filteredNovels, $perPage]) =>
 		Math.ceil($filteredNovels.length / $perPage) || 1
 	);
@@ -261,7 +256,6 @@
 	filteredNovels.subscribe(() => {
 		currentPage.set(1);
 	});
-
 	onMount(async () => {
 		 try {
         const novelpiaRes = await fetch(`${base}/novelpia_metadata.jsonl`);
@@ -277,36 +271,42 @@
                 try {
                     const novel = JSON.parse(line);
                     
-                    // Sanitize tags
+                
+			    // Sanitize tags
                     if (novel.tags && Array.isArray(novel.tags)) {
                         novel.tags = novel.tags.map((tag: any) =>
                             String(tag).startsWith('#') ? String(tag).substring(1) : String(tag)
-                        );
+          
+			               );
                     } else {
                         novel.tags = []; // Ensure tags is always an array
                     }
 
-                    // Assign default values if properties are missing
-                    novel.source = novel.source || 'Novelpia';
+           
+			         // Assign default values if properties are missing
+                    novel.source = novel.source ||
+			 'Novelpia';
                     novel.views = novel.view_count ?? 0;
                     novel.likes = novel.like_count ?? 0; 
 
 					if (novel.is_complete == 1) {
-						novel.publication_status = '완결'; // 'Completed'
+						novel.publication_status = '완결';
+			 // 'Completed'
 					} else {
 						novel.publication_status = '연재중'; // 'Ongoing'
 					}
                     
                     return novel;
-                } catch (parseError) {
+			 } catch (parseError) {
                     console.error('Failed to parse a line of JSONL:', parseError, 'Line:', line);
-                    return null; // Return null for malformed lines
+			 return null; // Return null for malformed lines
                 }
             })
-            .filter(Boolean); // Filter out any lines that failed to parse
+            .filter(Boolean);
+			 // Filter out any lines that failed to parse
 
         console.log('Successfully loaded and parsed Novelpia data:', novelpiaNovels);
-        // You can now use novelpiaNovels in your application's state.
+			 // You can now use novelpiaNovels in your application's state.
 
     
 
@@ -328,7 +328,6 @@
 					novel.views = novel.views ?? 0;
 					return novel;
 				});
-
 			const sfacgRes = await fetch(`${base}/sfacg_novels.jsonl`);
 			if (!sfacgRes.ok) throw new Error(`HTTP error ${sfacgRes.status} for SFACG data`);
 			const sfacgText = await sfacgRes.text();
@@ -347,7 +346,6 @@
 					novel.views = novel.views ?? 0;
 					return novel;
 				});
-
 			allNovels.set([...novelpiaNovels, ...kakaoNovels, ...sfacgNovels]);
 		} catch (err: any) {
 			error.set(`Failed to load metadata: ${err.message}.`);
@@ -422,7 +420,8 @@
 		jumpToPage = null;
 	}
 
-	let customMessage = writable<string | null>(null);
+	let customMessage = writable<string |
+null>(null);
 	function showCustomMessage(message: string) {
 		customMessage.set(message);
 		setTimeout(() => customMessage.set(null), 3000);
@@ -453,7 +452,6 @@
 		const novelId = target.dataset.novelId;
 		const novelSource = target.dataset.novelSource;
 		const novel = get(allNovels).find((n) => String(n.id) === novelId && n.source === novelSource);
-
 		if (!novel) {
 			console.error(
 				`Novel with ID ${novelId} and source ${novelSource} not found for cover error handling.`
@@ -521,7 +519,8 @@
 				height="18"
 				><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" /></svg
 			>
-			{$showFilters ? 'Hide Filters' : 'Show Filters'}
+			{$showFilters ?
+'Hide Filters' : 'Show Filters'}
 		</button>
 	</section>
 
@@ -725,7 +724,8 @@
 				</div>
 				<div>
 					<label for="source-filter">Source</label>
-					<select id="source-filter" bind:value={$sourceFilter}>
+					<select id="source-filter" 
+bind:value={$sourceFilter}>
 						<option value="">All Sources</option>
 						<option value="Novelpia">Novelpia</option>
 						<option value="kakao">Kakao</option>
@@ -744,6 +744,8 @@
 				<option value="chapters">Chapters</option>
 				<option value="views">Views</option>
 				<option value="title">Title</option>
+				<option value="created">Creation Date</option>
+				<option value="updated">Update Date</option>
 			</select>
 			<select bind:value={$sortDir}>
 				<option value="desc">Descending</option>
@@ -818,7 +820,8 @@
 			{#each $pagedNovels as novel (novel.id)}
 				<a
 					href={novel.source === 'Novelpia'
-						? `https://novelpia.com/novel/${novel.id}`
+						?
+`https://novelpia.com/novel/${novel.id}`
 						: novel.source === 'kakao'
 						? `https://page.kakao.com/content/${novel.id}`
 						: novel.source === 'sfacg'
@@ -835,7 +838,8 @@
 							{/if}
 
 							<img
-								src={novel.large_cover_url || novel.cover_url}
+								src={novel.large_cover_url ||
+novel.cover_url}
 								alt="Cover for {novel.title}"
 								loading="lazy"
 								on:error={handleCoverError}
@@ -903,7 +907,8 @@
 				<button on:click={goToPage} class="secondary">Go</button>
 			</div>
 			<button
-				on:click={() => currentPage.update((p) => p + 1)}
+				on:click={() => currentPage.update((p) => 
+p + 1)}
 				disabled={$currentPage === $totalPages}>Next ➡</button
 			>
 		</div>
